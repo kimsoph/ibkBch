@@ -1,0 +1,183 @@
+---
+title:  "IBK Branch Management"
+author: "Dongsoon Kim"
+date:   "2021.07.08."
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: false
+    theme: readable
+    css: D:/_R/_Fnc/dsKim_fonts.css
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+source('d:/_R/_Fnc/dsKim_library.R') 
+load("d:/_R/_Data/ibk.bch.rda")
+
+```
+
+# 지역본부
+
+```{r, include=FALSE}
+
+bch.loh.abs <- # (단위: 억원, 개, 명, 조원)
+  ibk.bch.cpt %>% 
+  group_by(지역본부) %>% 
+  summarise(
+    영업이익    = sum(영업이익, na.rm = T),
+    지점수      = n(),
+    인원        = sum(인원, na.rm = T),
+    기업여신    = sum(기업여신, na.rm = T)/1e4,
+    개인여신    = sum(개인여신, na.rm = T)/1e4,
+    기업수신    = sum(기업수신, na.rm = T)/1e4,
+    개인수신    = sum(개인수신, na.rm = T)/1e4
+    ) %>% 
+  ungroup(); bch.loh.abs
+
+```
+
+## 주요계수  
+
+### <> 영업이익 순위 기준
+
+```{r}
+
+bch.loh.abs %>% 
+  arrange(desc(영업이익)) %>% 
+  janitor::adorn_totals(where = "row", name = "합계") %>% 
+  kable(format = "markdown", caption = "(억원, 명, 조원, %)",
+        format.args = list(digits = 2, big.mark = ",", scientific = F))
+
+```
+
+_주) 본부직할 21 : 영업부 1, 기업금융센터 2, WM센터 18_    
+
+### <> 주요계수 별 지역본부 순위
+
+```{r}
+
+bch.loh.abs %>% 
+  mutate(
+    across(where(is.numeric), 
+           ~ rank(-.x, ties.method = "min"), .names = "rnk_{.col}")
+    ) %>% 
+  select(-c(영업이익:개인수신)) %>% 
+  rename_with(~ .x %>% str_remove("rnk_"), where(is.numeric)) %>% 
+  arrange(영업이익) %>% 
+  kable(format = "markdown", caption = "(22 중 x위)")
+
+```
+
+## 1인당 계수
+
+```{r, include=FALSE}
+
+bch.loh.man <- 
+  bch.loh.abs %>% # (억원/명)
+  mutate(
+    .생산성 = 영업이익/인원,
+    .기업여신 = 기업여신/인원 * 1e4, 
+    .개인여신 = 개인여신/인원*1e4,
+    .총수신 = (기업수신+개인수신)*1e4/인원 
+    ) %>% 
+  select(-c(영업이익:개인수신)); bch.loh.man
+
+```
+
+### <> 생산성 순위 (1인당 영업이익 Top 5)
+
+```{r}
+
+bch.loh.man %>% 
+  arrange(desc(.생산성)) %>% head(5) %>% 
+  kable(format = "markdown", caption = "(억원)",
+        format.args = list(digits = 2, big.mark = ",", scientific = F))
+
+```
+
+### <> 생산성 영향인자 
+
+```{r, fig.width=10, fig.height=4}
+
+bch.loh.man %>% 
+  pivot_longer(cols = .기업여신:.총수신) %>% 
+  ggplot(aes(x = .생산성, y = value, group = name, color = name)) + 
+  geom_point() + geom_smooth(method = "lm", se = F) + 
+  stat_regline_equation(label.y.npc = "top",aes(label = ..rr.label..)) +
+  facet_wrap(~ name, scales = "free_y") + 
+  theme_bw() + theme(legend.position = "None")
+
+```
+
+
+# 지점
+
+## Big 10  
+
+### <> 총여수신액 기준 
+
+```{r}
+
+ibk.bch %>% 
+  arrange(desc(총여수신)) %>% 
+  select(지역본부, 지점명, 지점장, 총여수신, 영업이익) %>% head(10) %>% 
+  kable(format = "markdown", caption = "(억원)",
+        format.args = list(digits = 2, big.mark = ",", scientific = F))
+
+```
+
+```{r, include=FALSE}
+
+ibk.bch.sel <- 
+  ibk.bch %>%
+  select(지역본부, 지점명, 총여수신, 영업이익)
+
+ibk.bch.div <- 
+  ibk.bch.sel %>% 
+  mutate(
+    구분 = case_when(
+      총여수신 <= 5e3 ~ "small",
+      총여수신 <= 1e4 ~ "middle",
+      총여수신 <= 2e4 ~ "large",
+      TRUE            ~ "special"),
+    구분 = factor(
+      구분, levels = c("small", "middle","large","special"))
+    ); ibk.bch.div
+
+```
+
+```{r, fig.width=10, fig.height=6}
+
+ibk.bch.div %>% 
+  ggplot(aes(x = 총여수신, y = 영업이익, color = 구분)) + 
+  geom_point() + geom_smooth(method = "lm", se = F) + 
+  stat_regline_equation(label.y.npc="top",aes(label=..rr.label..)) + 
+  facet_wrap(~ 구분, scales = "free") + 
+  theme_bw() + theme(legend.position = "None")
+
+```
+
+
+### <> 기업여신 기준 
+
+```{r}
+
+ibk.bch %>% 
+  arrange(desc(기업여신)) %>% 
+  select(지역본부, 지점명, 지점장, 기업여신, 영업이익) %>% head(10) %>% 
+  kable(format = "markdown", caption = "(억원)",
+        format.args = list(digits = 2, big.mark = ",", scientific = F))
+
+```
+
+
+
+
+
+
+
+
